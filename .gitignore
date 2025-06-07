@@ -1,6 +1,7 @@
 *.o
 *~
 *.orig
+*.swp
 builtins_doc.html
 compiler_types.h
 new_builtins.c
@@ -13,5 +14,6 @@ opfuncs.h
 llvm-ops.h
 llvm_template.c
 backends/lazy_creator.cpp
+compopt/simplify_func.c
 examples/Test
-libnoise
+

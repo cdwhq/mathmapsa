@@ -3,7 +3,7 @@
  *
  * MathMap
  *
- * Copyright (C) 1997-2009 Mark Probst
+ * Copyright (C) 1997-2010 Mark Probst
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
@@ -24,11 +24,6 @@
 #define __USERVAL_H__
 
 #include "glib.h"
-
-#ifndef OPENSTEP
-#include <gtk/gtk.h>
-#include <libgimp/gimp.h>
-#endif
 
 #include "tuples.h"
 #include "exprtree.h"
@@ -88,7 +83,11 @@ struct _input_drawable_t;
 /* TEMPLATE userval */
 typedef struct
 {
-    float *values;
+    int num_control_points;
+    double *control_xs;
+    double *control_ys;
+
+    float *values;		/* calculated from the control points */
 } curve_t;
 
 typedef struct
@@ -106,19 +105,8 @@ typedef struct _userval_t
 	struct _image_t *image;
 	curve_t *curve;
 	gradient_t *gradient;
-
-	struct
-	{
-#ifndef OPENSTEP
-	    GimpRGB button_value;
-#endif
-	    color_t value;
-	} color;
+	color_t color;
     } v;
-
-#ifndef OPENSTEP
-    GtkObject *widget_object;
-#endif
 } userval_t;
 /* END */
 
@@ -144,9 +132,6 @@ void copy_userval (userval_t *dst, userval_t *src, int type);
 
 void assign_image_userval_drawable (userval_info_t *info, userval_t *val, struct _input_drawable_t *drawable);
 
-#ifndef OPENSTEP
-GtkWidget* make_userval_table (userval_info_t *infos, userval_t *uservals);
-#endif
 void update_uservals (userval_info_t *infos, userval_t *uservals);
 
 const char* userval_type_name (int type);

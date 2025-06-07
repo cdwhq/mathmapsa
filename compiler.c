@@ -108,6 +108,7 @@ static type_t primary_type (primary_t *primary);
 #include "opfuncs.h"
 
 static pools_t compiler_pools;
+static int pools_alloced = 0;
 
 static operation_t ops[NUM_OPS];
 
@@ -482,7 +483,7 @@ make_compvar_rhs (compvar_t *compvar)
 }
 
 rhs_t*
-make_internal_rhs (internal_t *internal)
+compiler_make_internal_rhs (internal_t *internal)
 {
     rhs_t *rhs = alloc_rhs();
 
@@ -1096,7 +1097,7 @@ commit_assign (statement_t *stmt)
 		    }
 		    else
 		    {
-			assert(phi_assign->v.assign.rhs2->kind = RHS_PRIMARY
+			assert(phi_assign->v.assign.rhs2->kind == RHS_PRIMARY
 			       && phi_assign->v.assign.rhs2->v.primary.kind == PRIMARY_VALUE);
 			remove_use(phi_assign->v.assign.rhs2->v.primary.v.value, phi_assign);
 
@@ -1986,7 +1987,7 @@ gen_code (filter_t *filter, exprtree *tree, compvar_t **dest, int is_alloced)
 		if (bv != NULL)
 		    emit_assign(make_lhs(dest[0]), make_value_rhs(bv->values[0]));
 		else
-		    emit_assign(make_lhs(dest[0]), make_internal_rhs(tree->val.internal));
+		    emit_assign(make_lhs(dest[0]), compiler_make_internal_rhs(tree->val.internal));
 	    }
 	    break;
 
@@ -2294,7 +2295,7 @@ get_internal_value (filter_t *filter, const char *name, gboolean allow_bindings)
     else
     {
 	compvar_t *temp = make_temporary(TYPE_INT);
-	emit_assign(make_lhs(temp), make_internal_rhs(internal));
+	emit_assign(make_lhs(temp), compiler_make_internal_rhs(internal));
 	return current_value(temp);
     }
 }
@@ -4347,54 +4348,6 @@ check_rhs_defined (rhs_t *rhs, value_set_t *defined_set)
     compiler_for_each_value_in_rhs(rhs, &_check_value, closure);
 }
 
-static value_t*
-last_assignment_to_compvar (statement_t *stmts, compvar_t *compvar)
-{
-    value_t *last = 0;
-
-    while (stmts != 0)
-    {
-	switch (stmts->kind)
-	{
-	    case STMT_NIL :
-		break;
-
-	    case STMT_ASSIGN :
-	    case STMT_PHI_ASSIGN :
-		if (stmts->v.assign.lhs->compvar == compvar)
-		    last = stmts->v.assign.lhs;
-		break;
-
-	    case STMT_IF_COND :
-	    {
-		value_t *new_last = last_assignment_to_compvar(stmts->v.if_cond.exit, compvar);
-
-		if (new_last != 0)
-		    last = new_last;
-
-		break;
-	    }
-
-	    case STMT_WHILE_LOOP :
-	    {
-		value_t *new_last = last_assignment_to_compvar(stmts->v.while_loop.entry, compvar);
-
-		if (new_last != 0)
-		    last = new_last;
-
-		break;
-	    }
-
-	    default :
-		g_assert_not_reached();
-	}
-
-	stmts = stmts->next;
-    }
-
-    return last;
-}
-
 static void
 set_value_defined_and_current_for_checking (value_t *value, GHashTable *current_value_hash, value_set_t *defined_set)
 {
@@ -4672,6 +4625,27 @@ optimization_time_out (struct timeval *start, int timeout)
     return FALSE;
 }
 
+static void
+compiler_alloc_pools_if_necessary ()
+{
+    if (pools_alloced)
+	return;
+
+    init_pools(&compiler_pools);
+    vector_variables = g_hash_table_new(g_direct_hash, g_direct_equal);
+
+    pools_alloced = 1;
+}
+
+void
+compiler_free_pools (mathmap_t *mathmap)
+{
+    g_hash_table_unref(vector_variables);
+    free_pools(&compiler_pools);
+
+    pools_alloced = 0;
+}
+
 filter_code_t*
 compiler_generate_ir_code (filter_t *filter, int constant_analysis, int convert_types, int timeout, gboolean debug_output)
 {
@@ -4681,6 +4655,8 @@ compiler_generate_ir_code (filter_t *filter, int constant_analysis, int convert_
     struct timeval tv;
 
     g_assert(filter->kind == FILTER_MATHMAP);
+
+    compiler_alloc_pools_if_necessary ();
 
     gettimeofday(&tv, NULL);
 
@@ -4753,6 +4729,8 @@ compiler_generate_ir_code (filter_t *filter, int constant_analysis, int convert_
 
 	changed = compiler_opt_strip_resize(&first_stmt) || changed;
 	CHECK_SSA;
+	changed = compiler_opt_simplify(filter, first_stmt) || changed;
+	CHECK_SSA;
 
 	changed = compiler_opt_remove_dead_assignments(first_stmt) || changed;
 	CHECK_SSA;
@@ -4804,8 +4782,7 @@ compiler_compile_filters (mathmap_t *mathmap, int timeout)
     gboolean debug_output = FALSE;
 #endif
 
-    init_pools(&compiler_pools);
-    vector_variables = g_hash_table_new(g_direct_hash, g_direct_equal);
+    compiler_alloc_pools_if_necessary ();
 
     num_filters = 0;
     for (filter = mathmap->filters; filter != 0; filter = filter->next)
@@ -4827,13 +4804,6 @@ compiler_compile_filters (mathmap_t *mathmap, int timeout)
     }
 
     return filter_codes;
-}
-
-void
-compiler_free_pools (mathmap_t *mathmap)
-{
-    g_hash_table_unref(vector_variables);
-    free_pools(&compiler_pools);
 }
 
 /*** inits ***/

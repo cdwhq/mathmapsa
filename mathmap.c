@@ -2,8 +2,8 @@
  * Copyright (C) 1995 Spencer Kimball and Peter Mattis
  *
  * MathMap plug-in --- generate an image by means of a mathematical expression
- * Copyright (C) 1997-2009 Mark Probst
- * schani@complang.tuwien.ac.at
+ * Copyright (C) 1997-2010 Mark Probst
+ * mark.probst@gmail.com
  *
  * Copyright (C) 2008 Serge van Thillo
  * nulleke@hotmail.com
@@ -84,7 +84,7 @@
 #ifdef __MINGW32__
 #define SOURCEVIEW_FONT "Courier New 10"
 #else
-#define SOURCEVIEW_FONT "Courier 10"
+#define SOURCEVIEW_FONT "DejaVu Sans Mono Book 7"
 #endif
 
 #define EXPRESSIONS_DIR         "expressions"
@@ -497,7 +497,7 @@ register_expression_db (expression_db_t *edb, char *symbol_prefix, char *menu_pr
 	    static GimpParamDef *return_vals  = NULL;
 	    static int nargs = sizeof(args) / sizeof(args[0]);
 	    static int nreturn_vals = 0;
-
+gimp_plugin_menu_register (mathmap, "<Image>/Filters/Generic/");
 #ifdef DEBUG_OUTPUT
 	    fprintf(stderr, "registering %s (%s)\n", symbol, menu);
 #endif
@@ -771,7 +771,7 @@ run (const gchar *name, gint nparams, const GimpParam *param, gint *nreturn_vals
 		sprintf(layer_name, _("Frame %d"), frame + 1);
 		gimp_drawable_set_name(layer, layer_name);
 		output_drawable = gimp_drawable_get(layer);
-		gimp_image_add_layer(image_id, layer, 0);
+		gimp_image_insert_layer(image_id, layer, 0, 0);
 		do_mathmap(frame, t);
 	    }
 	    gimp_image_undo_group_end(image_id);
@@ -1009,7 +1009,7 @@ generate_code (void)
 	{
 	    mathmap_invocation_t *new_invocation;
 
-	    new_invocation = invoke_mathmap(new_mathmap, invocation, sel_width, sel_height);
+	    new_invocation = invoke_mathmap(new_mathmap, invocation, sel_width, sel_height, FALSE);
 	    assert(new_invocation != 0);
 
 	    new_invocation->output_bpp = output_bpp;
@@ -1129,7 +1129,7 @@ do_mathmap (int frame_num, float current_t)
 {
     GimpPixelRgn dest_rgn;
     gpointer pr;
-    gint progress, max_progress;
+    guint64 progress, max_progress;
     gchar progress_info[30];
 
     assert(invocation != 0);
@@ -1148,7 +1148,7 @@ do_mathmap (int frame_num, float current_t)
 			    TRUE, TRUE);
 
 	progress = 0;
-	max_progress = sel_width * sel_height;
+	max_progress = ((guint64) sel_width) * ((guint64) sel_height);
 
 	if (frame_num >= 0)
 	    sprintf(progress_info, _("Mathmapping frame %d..."), frame_num + 1);
@@ -1174,8 +1174,8 @@ do_mathmap (int frame_num, float current_t)
 					      dest_rgn.data, NUM_FINAL_RENDER_CPUS);
 
 	    /* Update progress */
-	    progress += region_width * region_height;
-	    gimp_progress_update((double) progress / max_progress);
+	    progress += ((guint64) region_width) * ((guint64) region_height);
+	    gimp_progress_update(((double) progress) / ((double)max_progress));
 	}
 
 	invocation_free_frame(frame);
@@ -1268,7 +1268,6 @@ get_pixel (mathmap_invocation_t *invocation, input_drawable_t *drawable, int fra
 static void
 build_fast_image_source (input_drawable_t *drawable)
 {
-    color_t *p;
     int width, height;
     int x, y;
     int img_width, img_height;
@@ -1279,7 +1278,7 @@ build_fast_image_source (input_drawable_t *drawable)
     width = drawable->v.gimp.fast_image_source_width;
     height = drawable->v.gimp.fast_image_source_height;
 
-    p = drawable->v.gimp.fast_image_source = g_malloc(width * height * sizeof(color_t));
+    drawable->v.gimp.fast_image_source = g_malloc(width * height * sizeof(color_t));
 
     img_width = drawable->image.pixel_width;
     img_height = drawable->image.pixel_height;
@@ -2929,11 +2928,13 @@ dialog_about_callback (GtkWidget *widget, gpointer data)
 	"You should have received a copy of the GNU General Public License\n"\
 	"along with MathMap; if not, write to the Free Software Foundation,\n"\
 	"Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.";
-    char *authors[] = { "Mark Probst <schani@complang.tuwien.ac.at>",
+    char *authors[] = { "Mark Probst <mark.probst@gmail.com>",
 			"Herbert Poetzl <herbert@13thfloor.at>",
+			"Genadz Batsyan <gbatyan@gmail.com>",
 			"Simone Demmel <neko@greenie.muc.de>",
 			"Carlos A. Furuti <carlos.furuti@progonos.com>",
 			"Alexander Heide <heide@ra.physik.uni-halle.de>",
+			"Eric Kidd <eric.kidd@pobox.com>",
 			"Yuval Levy <yuval@levy.ch>",
 			"Hans Lundmark <h.lundmark@gmail.com>",
 			"Xavier Martin <xavier.martin@avedya.com>",
@@ -2941,6 +2942,7 @@ dialog_about_callback (GtkWidget *widget, gpointer data)
 			"Ben Reichardt <ben.reichardt@gmail.com>",
 			"Josh Sommers <josh@sommers.net>",
 			"Serge van Thillo <nulleke@hotmail.com>",
+			"Andy Thomas",
 			NULL };
     char *artists[] = { "Herbert Poetzl <herbert@13thfloor.at>", NULL };
     char *translators = "Laurent Despeyroux <not@fgrev.no>\nYury Aliaev <mutabor@altlinux.org>";
@@ -2958,7 +2960,7 @@ dialog_about_callback (GtkWidget *widget, gpointer data)
 			   "translator-credits", translators,
 			   "comments", _("An image generation and manipulation system"),
 			   "website", "http://www.complang.tuwien.ac.at/schani/mathmap/",
-			   "copyright", "Copyright © 1997-2009 Mark Probst, Herbert Poetzl",
+			   "copyright", "Copyright © 1997-2009 Mark Probst, Herbert Poetzl, Genadz Batsyan",
 			   "license", gpl,
 			   "logo", mathmap_logo,
 			   NULL);
